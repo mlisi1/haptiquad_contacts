@@ -1,0 +1,8 @@
+haptiquad_contacts:
+  ros__parameters:
+
+    force_tol: 0.0
+    num_lines: 90000
+    lines_abs_limit: 1.0
+    tolerance: 1.5
+    use_gt: false

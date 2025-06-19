@@ -13,9 +13,8 @@ ContactEstimator::ContactEstimator() : Node("haptiquad_contacts"), mesh_loaded_(
     lines_abs_limit = this->declare_parameter<double>("lines_abs_limit", 1.0);
     force_tol = this->declare_parameter<double>("force_tol", 0.5);
     threshold_angle_rad = this->declare_parameter<double>("angle_lim", 0.0);
-        
     
-    marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/visualization_marker_est", 10);
+    marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/visualization/estimated_contact", 10);
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_);
 
     if (use_gt) {
@@ -33,7 +32,7 @@ ContactEstimator::ContactEstimator() : Node("haptiquad_contacts"), mesh_loaded_(
     }        
 
     mesh_sub_ = this->create_subscription<visualization_msgs::msg::Marker>(
-        "/visualization_model", 10,
+        "/visualization/collision_model", 10,
         std::bind(&ContactEstimator::mesh_callback, this, std::placeholders::_1));
 
     
