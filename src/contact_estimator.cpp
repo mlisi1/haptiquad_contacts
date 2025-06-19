@@ -1,7 +1,7 @@
 #include <haptiquad_contacts/contact_estimator.hpp>
 
 
-ContactEstimator::ContactEstimator() : Node("haptiquad_contacts"), mesh_loaded_(false), tf_buffer_(get_clock())
+ContactEstimator::ContactEstimator() : Node("haptiquad_contacts"), tf_buffer_(get_clock())
 {
 
     rclcpp::QoS mujoco_qos{rclcpp::SensorDataQoS()};
@@ -12,7 +12,7 @@ ContactEstimator::ContactEstimator() : Node("haptiquad_contacts"), mesh_loaded_(
     tolerance = this->declare_parameter<double>("tolerance", 30);
     lines_abs_limit = this->declare_parameter<double>("lines_abs_limit", 1.0);
     force_tol = this->declare_parameter<double>("force_tol", 0.5);
-    threshold_angle_rad = this->declare_parameter<double>("angle_lim", 0.0);
+    minimum_force_norm = this->declare_parameter<double>("minimum_force_norm", 0.0);
     
     marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/visualization/estimated_contact", 10);
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_);
@@ -118,7 +118,7 @@ void ContactEstimator::callback(const haptiquad_msgs::msg::EstimatedForces::Shar
     auto [force, torque] = getBaseFT(msg->forces[4], msg->header.stamp);
 
     if (force.norm() < previous_force_norm + force_tol && force.norm() >= previous_force_norm - force_tol) {
-        RCLCPP_INFO_STREAM(this->get_logger(), "The force is still the same " << force.norm());
+        RCLCPP_DEBUG(this->get_logger(), "The force is still the same.");
         publish_marker(last_best_point);
         return;        
     }
@@ -130,7 +130,7 @@ void ContactEstimator::callback(const haptiquad_msgs::msg::EstimatedForces::Shar
         publish_marker(best_point);
         previous_force_norm = force.norm();
         last_best_point = best_point;
-        RCLCPP_INFO(this->get_logger(), "Found point [%f, %f, %f] with error %f", best_point.x(), best_point.y(), best_point.z(), error);
+        RCLCPP_DEBUG(this->get_logger(), "Found point [%f, %f, %f] with error %f", best_point.x(), best_point.y(), best_point.z(), error);
 
     } else {
 
@@ -150,7 +150,7 @@ void ContactEstimator::gt_callback(const geometry_msgs::msg::WrenchStamped::Shar
     auto [force, torque] = getBaseFT(msg->wrench, msg->header.stamp);
 
     if (force.norm() < previous_force_norm + force_tol && force.norm() >= previous_force_norm - force_tol) {
-        RCLCPP_INFO_STREAM(this->get_logger(), "The force is still the same " << force.norm());
+        RCLCPP_DEBUG(this->get_logger(), "The force is still the same.");
         publish_marker(last_best_point);
         return;        
     }
@@ -162,7 +162,7 @@ void ContactEstimator::gt_callback(const geometry_msgs::msg::WrenchStamped::Shar
         publish_marker(best_point);
         previous_force_norm = force.norm();
         last_best_point = best_point;
-        RCLCPP_INFO(this->get_logger(), "Found point [%f, %f, %f] with error %f", best_point.x(), best_point.y(), best_point.z(), error);
+        RCLCPP_DEBUG(this->get_logger(), "Found point [%f, %f, %f] with error %f", best_point.x(), best_point.y(), best_point.z(), error);
 
     } else {
 
@@ -182,22 +182,19 @@ std::pair<Eigen::Vector3d, double> ContactEstimator::find_point(
     int lines)
 {
     double force_norm = force.norm();
-    bool all_rejected_by_normal = true;
+    bool all_line_rejected = true;
 
-    if (force_norm < 1)
+    if (force_norm < minimum_force_norm)
     {
-        // RCLCPP_WARN(this->get_logger(), "Force too smallmin_distto define direction.");
+        RCLCPP_DEBUG(this->get_logger(), "Force too smal to define direction.");
         return {Eigen::Vector3d::Zero(), 0.0};
     }
 
-    // Eigen::Vector3d direction = force.normalized() / force_norm;
     Eigen::Vector3d direction = force / force_norm;
     Eigen::Vector3d point_on_line = force.cross(torque) / (force_norm * force_norm);
 
-    float min_dist = std::numeric_limits<float>::max();
     Eigen::Vector3d best_point = Eigen::Vector3d::Zero();
     double best_error = std::numeric_limits<double>::infinity();
-    double best_dist = 0.0;
 
     open3d::core::Device device("CPU:0");
     open3d::core::Tensor rays({lines, 6}, open3d::core::Dtype::Float32, device);
@@ -205,7 +202,6 @@ std::pair<Eigen::Vector3d, double> ContactEstimator::find_point(
     float* rays_ptr = rays.GetDataPtr<float>();
     for (int i = 0; i < lines; ++i)
     {
-        // double l = -lines_abs_limit + 2 * lines_abs_limit * i / static_cast<double>(lines - 1);
         double l = -1.0 + lines_abs_limit * i / static_cast<double>(lines - 1);
         Eigen::Vector3d origin = point_on_line;
         Eigen::Vector3d dir = direction * l;
@@ -218,13 +214,9 @@ std::pair<Eigen::Vector3d, double> ContactEstimator::find_point(
     }
 
     auto ans = scene_.CastRays(rays);
-
-
     auto& t_hit_tensor = ans.at("t_hit");
     auto& geometry_ids = ans.at("geometry_ids");
-    auto& primitive_normals = ans.at("primitive_normals");  // (lines, 3) float32
-
-    // primitive_ids and primitive_uvs are not used here but can be queried if needed
+    auto& primitive_normals = ans.at("primitive_normals"); 
 
     const float* t_hit = t_hit_tensor.GetDataPtr<float>();
     const uint32_t* geom_ids = geometry_ids.GetDataPtr<uint32_t>();
@@ -256,54 +248,26 @@ std::pair<Eigen::Vector3d, double> ContactEstimator::find_point(
             //     // RCLCPP_ERROR_STREAM(this->get_logger(), force.dot(normal));
             //     continue;
             // }
-            // if (force.transpose() * normal > threshold_angle_rad) {
-            //     continue;  // surface normal facing away from force
-            // }
-            all_rejected_by_normal = false;
+            all_line_rejected = false;
 
 
             Eigen::Vector3d point = origin + t_hit[i] * dir;
 
-
-            // std::vector<float> point_vec = {
-            //     static_cast<float>(point[0]),
-            //     static_cast<float>(point[1]),
-            //     static_cast<float>(point[2])
-            // };
-
-            // open3d::core::Tensor point_tensor(point_vec, {1, 3}, open3d::core::Dtype::Float32, device);
-
-            // open3d::core::Tensor sdf = scene_.ComputeSignedDistance(point_tensor);
-            // float dist = sdf[0].Item<float>();
-
-            
-            // if (dist > 1e-9) {
-            //     continue;
-            // }
-            
-
             Eigen::Vector3d expected_torque = point.cross(force);
             double error = (expected_torque - torque).norm();
-            // double error = expected_torque.norm();
 
             if (error < best_error)
             {
                 best_error = error;
                 best_point = point;
-                // min_dist = t_hit[i];
-                // best_dist = dist;
+
             }
         }
     }
 
-    if (all_rejected_by_normal) {
-        RCLCPP_ERROR_STREAM(this->get_logger(), "all lines rejected");
+    if (all_line_rejected) {
+        RCLCPP_WARN_STREAM(this->get_logger(), "No hit with geometry");
     }
-
-    // if (min_dist == std::numeric_limits<float>::max())
-    //     return {Eigen::Vector3d::Zero(), 1e6};
-
-    // RCLCPP_WARN_STREAM(this->get_logger(), best_dist);
 
     return {best_point, best_error};
 }
@@ -324,7 +288,7 @@ void ContactEstimator::publish_marker(const Eigen::Vector3d& position)
     marker.scale.x = 0.05;
     marker.scale.y = 0.05;
     marker.scale.z = 0.05;
-    marker.color.a = 1.0;
+    marker.color.a = 0.8;
     marker.color.r = 0.3;
     marker.color.g = 0.5;
     marker.color.b = 0.1;
