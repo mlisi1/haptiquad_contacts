@@ -11,9 +11,11 @@ def generate_launch_description():
 
     rviz_arg = DeclareLaunchArgument('rviz', default_value='false', description='Launch rviz')
     use_gt_arg = DeclareLaunchArgument('use_gt', default_value='false', description='Wether to use or not values from simulation')
+    plot_arg = DeclareLaunchArgument('plot', default_value='false', description='Wether or not to open error plots')
 
     use_gt = LaunchConfiguration("use_gt")
     rviz = LaunchConfiguration("rviz")
+    plot = LaunchConfiguration("plot")
 
 
     self_pkg = get_package_share_directory('haptiquad_contacts')
@@ -51,8 +53,11 @@ def generate_launch_description():
     ) 
 
 
-
-
+    contact_plotter = Node(
+        package="haptiquad_contacts", executable="contact_error_plotter.py",
+        emulate_tty = True,
+        condition = IfCondition(plot)
+    )
 
     rviz_node = Node(
         package='rviz2',
@@ -72,6 +77,8 @@ def generate_launch_description():
             haptiquad_contacts_gt,
             rviz_node,
             model_publisher,
-            mujoco_contact_publisher
+            mujoco_contact_publisher,
+            plot_arg,
+            contact_plotter
         ]
     )

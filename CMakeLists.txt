@@ -26,6 +26,7 @@ ament_python_install_package(scripts)
 install(
   PROGRAMS  scripts/mujoco_contact_publisher.py
             scripts/model_publisher.py
+            scripts/contact_error_plotter.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
