@@ -9,7 +9,6 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(mujoco_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
@@ -36,7 +35,6 @@ add_executable(contact_estimator
 )
 
 ament_target_dependencies(contact_estimator
-  mujoco_msgs
   geometry_msgs
   Eigen3
   rclcpp
