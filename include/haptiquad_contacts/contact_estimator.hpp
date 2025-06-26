@@ -60,6 +60,7 @@ class ContactEstimator : public rclcpp::Node
         double force_tol;
         bool use_gt;
         double minimum_force_norm;
+        double z_compensation;
 
         Eigen::Vector3d last_best_point = Eigen::Vector3d::Zero();
         bool mesh_loaded_ = false;

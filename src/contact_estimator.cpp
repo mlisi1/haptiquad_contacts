@@ -13,6 +13,7 @@ ContactEstimator::ContactEstimator() : Node("haptiquad_contacts"), tf_buffer_(ge
     lines_abs_limit = this->declare_parameter<double>("lines_abs_limit", 1.0);
     force_tol = this->declare_parameter<double>("force_tol", 0.5);
     minimum_force_norm = this->declare_parameter<double>("minimum_force_norm", 0.0);
+    z_compensation = this->declare_parameter<double>("z_compensation", 0.0);
     
     marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/visualization/estimated_contact", 10);
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_);
@@ -116,6 +117,7 @@ void ContactEstimator::callback(const haptiquad_msgs::msg::EstimatedForces::Shar
         return;
 
     auto [force, torque] = getBaseFT(msg->forces[4], msg->header.stamp);
+    force.z() -= z_compensation;
 
     if (force.norm() < previous_force_norm + force_tol && force.norm() >= previous_force_norm - force_tol) {
         RCLCPP_DEBUG(this->get_logger(), "The force is still the same.");

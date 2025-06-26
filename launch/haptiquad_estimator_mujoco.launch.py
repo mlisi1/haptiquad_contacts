@@ -12,6 +12,7 @@ def generate_launch_description():
     rviz_arg = DeclareLaunchArgument('rviz', default_value='false', description='Launch rviz')
     use_gt_arg = DeclareLaunchArgument('use_gt', default_value='false', description='Wether to use or not values from simulation')
     plot_arg = DeclareLaunchArgument('plot', default_value='false', description='Wether or not to open error plots')
+    
 
     use_gt = LaunchConfiguration("use_gt")
     rviz = LaunchConfiguration("rviz")
@@ -25,10 +26,13 @@ def generate_launch_description():
     rviz_config = os.path.join(self_pkg, 'config', 'contacts.rviz')
 
 
+    config_arg = DeclareLaunchArgument('config_file', default_value=estimator_config, description='Config file for the estimator')
+
+
     haptiquad_contacts = Node(
         package="haptiquad_contacts", executable="contact_estimator",
         emulate_tty = True,
-        parameters=[estimator_config],
+        parameters=[LaunchConfiguration('config_file')],
         condition=UnlessCondition(use_gt)
     )  
 
@@ -73,6 +77,7 @@ def generate_launch_description():
         [   
             rviz_arg,
             use_gt_arg,
+            config_arg,
             haptiquad_contacts,
             haptiquad_contacts_gt,
             rviz_node,
