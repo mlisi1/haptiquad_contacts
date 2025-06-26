@@ -16,8 +16,11 @@ from copy import deepcopy
 import tf2_ros
 import quaternion as q
 import tkinter.font as tkFont
-from io import BytesIO
+import os
+from datetime import datetime
+import matplotlib.pyplot as plt
 
+names = ["error", "norm", "comp"]
 
 
 class ContactError(Node, tk.Tk):
@@ -66,6 +69,7 @@ class ContactError(Node, tk.Tk):
 		self.plot.autoscroll = True
 		self.plot.autoscale = True
 		self.plot.x_range = 10.0
+		self.limit = 1000
 
 
 		self.to_plot = {}
@@ -236,11 +240,15 @@ class ContactError(Node, tk.Tk):
 		self.to_plot["norm"] = np.concatenate((self.to_plot["norm"], np.array([[norm_err]])), axis=1)
 		self.to_plot["comp"] = np.append(self.to_plot["comp"], comparison, axis=1)
 
+		if self.to_plot["error"].shape[1] >= self.limit:
+			self.to_plot["error"] = self.to_plot["error"][:,1:]
+			self.to_plot["norm"] = self.to_plot["norm"][:, 1:]
+			self.to_plot["comp"] = self.to_plot["comp"][:, 1:]
+			self.to_plot["time"] = self.to_plot["time"][1:]
+
 	
-	def process_mode(self):
+	def process_mode(self, mode):
 
-
-		mode = self.mode.get()
 		color = None		
 		style = None
 		xlabel = "Time [s]"
@@ -274,6 +282,8 @@ class ContactError(Node, tk.Tk):
 
 	def update_plots(self):
 
+		mode = self.mode.get()
+
 		if self.prev_mode != self.mode.get():
 			self.prev_mode = self.mode.get()
 			self.plot.clear()
@@ -287,7 +297,7 @@ class ContactError(Node, tk.Tk):
 			del self.frozen_data
 			self.frozen_data = None
 
-		y_values, x_values, legend, title, xlabel, ylabel, color, style = self.process_mode()
+		y_values, x_values, legend, title, xlabel, ylabel, color, style = self.process_mode(mode)
 
 		if not y_values.shape[1] > 0:
 			return
@@ -299,13 +309,75 @@ class ContactError(Node, tk.Tk):
 
 	def save_plots(self):
 		
-		path = tk.filedialog.asksaveasfilename(
-                defaultextension=".png",  # Default file extension
-                filetypes=[("PNG Files", "*.png"), ("All Files", "*.*")],  # Allowed file types
-                title="Save File As"
-            )
+		path = tk.filedialog.askdirectory(title="Choose a Directory")
+		now = datetime.now()
+		time_str = now.strftime("%Y-%m-%d_%H-%M-%S")
+		new_path = os.path.join(path, f"contacts_output_{time_str}")
+
+		os.makedirs(new_path)   
+
+		for m in range(3):
+
+			y_values, x_values, legend, title, xlabel, ylabel, color, style = self.process_mode(m)
+			fig, ax = plt.subplots(constrained_layout=True)
+			fig.set_size_inches(9.4, 4.8)
+
+
+			ax.grid(True)
+			ax.set_title(self.title if title==None else title, fontsize=16)  
+			for j in range(y_values.shape[0]):
+				if not type(style) == type(None):
+					s = style[j]
+					c = color[j]
+				else:
+					s = style
+					c = color
+
+				ax.plot(x_values, y_values[j], label=legend[j], color=c, linestyle=s, linewidth=3)
+				ax.legend(loc="upper right")                
+				ax.set_xlabel("" if xlabel == None else xlabel, fontsize =14)
+				ax.set_ylabel("" if ylabel == None else ylabel, fontsize = 14)
+
+				ax.relim()
+				ax.autoscale()
+				ax.set_xlim(x_values[-1]-10.2, x_values[-1])
+				filename = os.path.join(new_path, f"{names[m]}.png")
+				self.get_logger().info(f'Saving image: {filename}')
+				fig.savefig(filename, dpi=200)
+				plt.close(fig)  
 		
-		self.plot.fig.savefig(path)
+		self.save_stats(new_path)
+
+
+	def save_stats(self, filepath):
+
+		if self.frozen_data == None:
+			return
+
+		with open(os.path.join(filepath, 'contact_stats.txt'), "w") as f:
+			f.write("Contact stats:\n")
+	
+			avg_norm = np.mean(self.frozen_data['norm'])
+			avg_err_x = np.mean(self.frozen_data['error'][0,:])
+			avg_err_y = np.mean(self.frozen_data['error'][1,:])
+			avg_err_z = np.mean(self.frozen_data['error'][2,:])
+			min_norm = np.min(self.frozen_data['norm'])
+			max_norm = np.max(self.frozen_data['norm'])
+
+			f.write('   Norm:\n')
+			f.write(f'      - Avg value: {avg_norm} m\n')
+			f.write(f'      - Min value: {min_norm} m\n')
+			f.write(f'      - Max value: {max_norm} m\n')
+			f.write('   Error:\n')
+			f.write('       -X:\n')
+			f.write(f'          - Avg value: {avg_err_x} m\n')
+			f.write('       -Y:\n')
+			f.write(f'          - Avg value: {avg_err_y} m\n')
+			f.write('       -Z:\n')
+			f.write(f'          - Avg value: {avg_err_z} m\n')
+  
+
+
 		
 
 def main(args = None):
