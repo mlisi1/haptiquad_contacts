@@ -116,6 +116,8 @@ void ContactEstimator::callback(const haptiquad_msgs::msg::EstimatedForces::Shar
     if (!mesh_loaded_)
         return;
 
+    start_time = std::chrono::high_resolution_clock::now();
+
     auto [force, torque] = getBaseFT(msg->forces[4], msg->header.stamp);
     force.z() -= z_compensation;
 
@@ -128,7 +130,19 @@ void ContactEstimator::callback(const haptiquad_msgs::msg::EstimatedForces::Shar
     auto [best_point, error] = find_point(force, torque, num_lines);
 
     if (error < tolerance)
-    {
+    {   
+        end_time = std::chrono::high_resolution_clock::now();
+        processing_time = end_time - start_time;
+        processing_times.push_back(processing_time);
+
+        double avg_time = computeAverageProcessingTime();
+        RCLCPP_INFO_STREAM_THROTTLE(
+            this->get_logger(), 
+            *this->get_clock(), 
+            rclcpp::Duration::from_seconds(1.0).nanoseconds()/1000000, 
+            "Average processing time: " << avg_time << " ms"
+        );
+        
         publish_marker(best_point);
         previous_force_norm = force.norm();
         last_best_point = best_point;
@@ -301,6 +315,21 @@ void ContactEstimator::publish_marker(const Eigen::Vector3d& position)
     marker.pose.orientation.w = 1.0;
 
     marker_pub_->publish(marker);
+}
+
+
+
+
+double ContactEstimator::computeAverageProcessingTime() {
+
+    if (processing_times.empty()) {
+        return 0.0;
+    }
+    double sum = 0.0;
+    for (const auto& d : processing_times) {
+        sum += d.count();
+    }
+    return sum / processing_times.size();
 }
 
 

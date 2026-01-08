@@ -33,6 +33,8 @@ class ContactEstimator : public rclcpp::Node
         void gt_callback(const geometry_msgs::msg::WrenchStamped::SharedPtr msg);
         void publish_marker(const Eigen::Vector3d& position);
 
+        double computeAverageProcessingTime();
+
 
         std::pair<Eigen::Vector3d, Eigen::Vector3d> getBaseFT(const geometry_msgs::msg::Wrench wrench, rclcpp::Time stamp);
         std::pair<Eigen::Vector3d, double> find_point(const Eigen::Vector3d& force, const Eigen::Vector3d& torque, int lines);
@@ -64,5 +66,10 @@ class ContactEstimator : public rclcpp::Node
 
         Eigen::Vector3d last_best_point = Eigen::Vector3d::Zero();
         bool mesh_loaded_ = false;
+
+        //Performance monitoring
+        std::chrono::high_resolution_clock::time_point start_time, end_time;
+        std::chrono::duration<double, std::milli> processing_time;
+        std::vector<std::chrono::duration<double, std::milli>> processing_times;
 
 };
